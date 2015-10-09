@@ -1,0 +1,46 @@
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.js"></script>
+    <script>
+        CLIENT_ID='9XOe41lJ6DIkHT6hp1IhOYPX3Nga';  // This app needs to have it's callback url match the url to load this page.
+
+        // If we don't have a token, send the user off to get one.
+        if (window.location.href.indexOf('access_token') == -1) {
+            window.location.href =  "https://api-qa.ucsd.edu:8243/authorize?" + $.param({
+                response_type:'token',
+                client_id:CLIENT_ID,
+                redirect_uri:window.location.href,
+                });
+        }
+
+        $(document).ready(function(){
+            var token = /access_token=([^&]*)/g.exec(window.location.href)[1];
+            $("#token p").text("Access Token: " + token);
+            invokeAPI(token);
+        });
+        
+        function invokeAPI(token) {
+            $.ajax({
+                url: 'https://api-qa.ucsd.edu:8243/weather/1.0.0/weather',
+                dataType: 'json',
+                data: {q: 'London,uk'},
+                success: function(data, textStatus, xhr) {
+                    $("#api p").text(JSON.stringify(data));
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                  console.log("An error occured", errorThrown);
+                  $("#api p").text("An error occured");
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>API Manager Example</h1>
+    <h2>Token</h2><div id="token"><p>No Token</p></div>
+    <h2>API</h2><div id="api"><p>Waiting on Token</p></div>
+</body>
+</html>
+        
+        

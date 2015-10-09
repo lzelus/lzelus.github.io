@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  // <script src="jquery-1.11.3.js"></script>
+  <script src="vkbeautify.0.99.00.beta.js"></script>
+  <script src="js-cookie-2.0.3.js"></script>
+  <script src="jquery.validate-1.14.0.js"></script>
+  <script src="jquery.countdown.js"></script>
+  <script>
+
+    Cookies.defaults.secure = true;
+    Cookies.json = true;
+    
+    function enable(selector) {
+        $.each(arguments, function(i,selector) {
+            $(selector).prop("disabled",false);
+        });
+    }
+    
+    function disable() {
+        $.each(arguments, function(i,selector) {
+            $(selector).prop("disabled",true);
+        });
+    }
+
+    function getQueryParams()
+    {
+        return parseParams(/\?[^#]*/)
+    }
+    
+    function getAnchorParams()
+    {
+        return parseParams(/#[^\?]*/)
+    }
+    
+    function parseParams(regex)
+    {
+        var params = regex.exec(window.location.href);
+        if (!params) {
+            return {}
+        }
+        var vars = [], hash;
+        var hashes = params[0].slice(1).split('&');
+        for(var i = 0; i < hashes.length; i++)
+        {
+            hash = hashes[i].split('=');
+            vars.push(hash[0]);
+            vars[hash[0]] = hash[1];
+        }
+        return vars;
+    }
+    
+    function getTokenData() {
+        var tokenData = Cookies.get("token") || {valid:false};
+
+        tokenData.save = function() {
+            Cookies.set("token", this);
+            $("button").trigger("token:change", [this]);
+        }
+        
+        tokenData.invalidate = function() {
+            this.valid = false;
+            this.save()
+        }
+        
+        tokenData.clear = function() {
+            Cookies.set("token", {});
+            this.valid = false;
+            $("button").trigger("token:change", [this]);
+        }
+        
+        return tokenData;
+    }
+    
+    function setupConfig(defaults, tableID) {
+        var config = Cookies.get("config") || {};
+        
+        console.log("Loaded cookie ", config)
+        
+        config.save = function() {
+            console.log("Saving", this);
+            console.log("JSON", JSON.stringify(this));
+            Cookies.set("config", JSON.stringify(this), { expires: 30 });
+            document.cookie = 'config=' + JSON.stringify(this);
+            var x = Cookies.get("config");
+            console.log("Saved", x);
+        }
+        
+        $.each(defaults, function (id, settings) {
+            if (typeof settings == "string") {
+                settings = {'value':settings}
+            }
+            
+            if (!(id in config) && settings.value) {
+                config[id] = settings.value
+            }
+            
+            if ($(tableID)) {
+                var input = $("<input>", {"id":id});
+                if (config[id]) input.val(config[id])
+            
+                $(tableID).append(
+                    $("<tr>").append(
+                        $("<th>").text(id),
+                        $("<td>").append(input)
+                    )
+                );
+
+                input.change(function (e) {
+                    if (settings.onChange) settings.onChange(e)
+                    console.log("Setting " + e.target.id + " to " + e.target.value);
+                    config[e.target.id] = e.target.value;
+                    config.save()
+                });
+            }
+            
+        });
+        
+        config.set = function(id, value) {
+            $("#"+id).val(value).change();
+        }
+        
+        return config;
+    }
+    
+    function renderError(msg, dest, jqXHR,  textStatus,  errorThrown) {
+        console.log("Failure", msg, textStatus, jqXHR.responseText, jqXHR );
+        
+        if (jqXHR.responseText && ((jqXHR.responseText.indexOf("Access Token Inactive") != -1) || (jqXHR.responseText.indexOf("Access Token Expired") != -1))) {
+            msg = "Access token has expired, marking it as invalid.";
+            getTokenData().invalidate();
+            enable(getToken);
+        }
+        $(dest + " .msg").html($("<strong>").html(msg));
+        if (jqXHR.responseText) {
+            $("<pre>").text(vkbeautify.xml(jqXHR.responseText)).appendTo(dest);
+        }
+    }
+    
+    function renderSuccess(msg, dest, resp, textStatus, jqXHR, skipOutput) {
+        console.log("Success.", msg, resp);
+        console.log("    textStatus: " + textStatus);
+        $(dest + " .msg").html($("<strong>").html(msg));
+        $(dest + " pre").remove();
+        if (!skipOutput) {
+            var text=resp;
+            try {
+                text = vkbeautify.json(resp);
+            } catch (e) {
+                console.log("Error while applying vkbeautify to response:", e)
+            }
+            if (!text || text == "\"\"") {
+                text="Response had no data.";
+            }
+            $("<pre>").text(text).appendTo(dest);
+        }
+        
+        
+        try {
+            json = jQuery.parseJSON( resp )
+            console.log("Response as JSON: ", json)
+            if ('x-jwt-assertion' in json) {
+                jwt = json['x-jwt-assertion']
+                if (Array.isArray(jwt)) {
+                    jwt = jwt[0]
+                }
+                renderJWT(jwt)
+            }
+        } catch (e) {
+            
+        }
+    }
+    
+    // function revoke(token) {
+    //     $.ajax({
+    //         // url: 'https://api-proto.ucsd.edu:8243/revoke/',
+    //         url: '/api-proxy/revoke',
+    //         type: 'POST',
+    //         data: {
+    //             token: token,
+    //             token_type_hint: "access_token",
+    //         },
+    //         headers: {
+    //             //Authorization: "Basic TTZoU1llbVdybDVxMnhmZ0p4VkUwYjhiQTA4YTpkTEVYUVNZb2c0MzRjWlhmaXVRbzl2SzJqVjRh", // Client Auth for DefaultApplication
+    //             //client_id: "VxFJom3vq1EUza7hM4CLEwozgW4a",
+    //             Authorization: "Basic U0dydl9ITHhyT3lHYU5qQzR6OXdVUGxGZmdRYTpHWmh5ZnJJaERWalJnQ2RrdHdST2hudXJzWElh", // Client Auth for WeatherTester
+    //             //Authorization: "Bearer " + token,
+    //         },
+    //         success: function (resp, textStatus, jqXHR) {
+    //             var msg="Successfully revoked the token.";
+    //             if (jqXHR.getResponseHeader("RevokedAccessToken") == null) {
+    //                 msg="Server responded success, but did not actually find the token to revoke.";
+    //             }
+    //             renderSuccess(msg, "#global", resp, textStatus, jqXHR);
+    //         },
+    //         error: function (jqXHR,  textStatus,  errorThrown) {
+    //             renderError("Failed to revoke the token.", "#global", jqXHR,  textStatus,  errorThrown);
+    //         },
+    //     });
+    // }
+    
+    $(document).ready(function(){
+        var token = getTokenData();
+        console.log("Loaded token:", token);
+        
+        var config = setupConfig({
+            "serverURL":"https://api-proto.ucsd.edu:8243", 
+            "clientID":"GOodpTYfBr5LWJOCjlr5Y6MbeAAa",
+            "callbackURL": window.location.href,
+            "token":"",
+            "apiURL": {
+                'value': '/webreg/waitlist/v1/classes/courseEligibility',
+                'onChange' : function(event) {
+                    if (event.target.value[0] != "/") {
+                        event.target.value = "/" + event.target.value;
+                    }
+                }
+            },
+            "htmlType":'GET',
+            'ContentType':'application/json',
+            'payload':'',
+        }, $("#config table"));
+        
+        $("#token").val(token.value);           // Save the currently active token to the config.
+        $("#token").change();
+        $("#token").change(function (e) {       // Keep the config and token in sync
+                console.log("Updating token");
+                token.value = config.token;
+                token.valid = true;
+                token.save();
+            });
+        
+        console.log("Loaded Config", config);
+        
+        $("#getToken").click(function(){
+            token.clear();
+            window.location.href = config.serverURL + "/authorize?response_type=token&client_id="+config.clientID+"&redirect_uri="+config.callbackURL;
+        }).on("token:change", function(event, token) {
+            $(this).prop("disabled", !!token.valid);
+        });
+        
+        $("#reset").click(function(){
+            token.clear();
+            window.location.href = config.callbackURL;
+        }).on("token:change", function(event, token) {
+            $(this).prop("disabled", !token.value);
+        });
+        
+        $("#markValid").click(function() {
+            token.valid = true;
+            token.save();
+            window.location.href = config.callbackURL;
+        }).on("token:change", function(event, token) {
+            $(this).prop("disabled", !token.value || token.valid);
+        });
+
+        $("#revoke").click(function() {
+            revoke(token.value);
+        }).on("token:change", function(event, token) {
+            $(this).prop("disabled", !token.valid);
+        });
+        
+        $("#reload").click(function() {
+            window.location.reload();
+        });
+        
+        if (getAnchorParams()["access_token"]) {
+            console.log("Storeing access token in cookie");
+            
+            token.value = getAnchorParams()["access_token"];
+            token.valid = true;
+            token.issued = new Date();
+            token.expires = new Date();
+            token.expires = new Date(token.issued.getTime() + getAnchorParams()["expires_in"] * 1000);
+            console.log("Now", new Date());
+            console.log("Expires in", getAnchorParams()["expires_in"]);
+            console.log("EXpires in", token.expires);
+            
+            token.save();
+            
+            window.location.replace(config.callbackURL);
+        }
+        
+        if (token.value) {
+            $("#token .msg").text("You currently have an OAuth token: " + token.value);
+            
+            if (!token.valid) {
+                $("#token .msg").append(".  It has been marked as invalid, a new token is required.");
+            }
+            
+            $('#getting-started').countdown(new Date(token.expires),  function(event) {
+              $(this).html(event.strftime('Expires in %H:%M:%S'));
+            });
+        }
+        
+        if (token.valid) {
+            $("#api .msg").html("Invoking API...");
+            jQuery.support.cors = true;
+            
+            if (config.apiURL[0] != "/") {
+                config.set("apiURL", "/" + config.apiURL)
+            }
+            
+            $.ajax({
+                url: config.serverURL + config.apiURL,
+                type: config.htmlType,
+                contentType: config.ContentType,
+                data: config.payload,
+                headers: { Authorization: "Bearer " + token.value,},
+                success: function (resp, textStatus, jqXHR) {
+                    renderSuccess("Successfully invoked the API.", "#api", resp, textStatus, jqXHR);
+                    console.log("Returned headers " + jqXHR.getAllResponseHeaders());
+                    console.log("ACT Auth " + jqXHR.getResponseHeader("Act-authorization-token"));
+                },
+                error: function (jqXHR,  textStatus,  errorThrown) {
+                    renderError("Failed to invoke the API.", "#api", jqXHR,  textStatus,  errorThrown);
+                },
+            }, 'json');
+        }
+        
+        $("button").trigger("token:change", [token]);
+    });
+    
+    function renderJWT(jwt) {
+        $("#jwt").show();
+        // JWT comes in the format "<metadata>=.<data>.", both metadata and data are base64 encoded json
+        var encoded = /=\.(.*)\./.exec(jwt)[1];
+        var decoded = window.atob(encoded);
+        $.each(JSON.parse(decoded), function( key, value ) {
+            $("#jwt table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>");
+        });
+    }
+    function loadJWT() {
+        $("#headers").show();
+        $("#headers .msg").html("Invoking Headers API...");
+        $.ajax({
+            url: 'https://api-proto.ucsd.edu:8243/jsontest_headers/1.0.0/test',
+            type: 'GET',
+            dataType: "json",
+            headers: { Authorization: "Bearer " + getTokenData().value, },
+            error: function (jqXHR,  textStatus,  errorThrown) { 
+                renderError("Failed to invoke the headers API.", "#headers", jqXHR,  textStatus,  errorThrown);
+            },
+            success: function (resp, textStatus, jqXHR) {
+                renderSuccess("Successfully invoked the headers API", "#headers", resp, textStatus, jqXHR, true);
+                $.each(resp, function(key, value) {
+                    $("#headers table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>")
+                });
+
+                $("#jwt").show();
+                // JWT comes in the format "<metadata>=.<data>.", both metadata and data are base64 encoded json
+                var encoded = /=\.(.*)\./.exec(resp['X-JWT-Assertion'])[1];
+                var decoded = window.atob(encoded);
+                $.each(JSON.parse(decoded), function( key, value ) {
+                    $("#jwt table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>");
+                });
+            },
+        });
+    }
+    
+
+    
+  </script>
+
+    <style>
+        body {
+        }
+
+        table.dictTable th, table.dictTable td {
+            border: solid 1px;  
+            padding-left: 5px;
+            padding-right: 10px;
+        }
+
+        table.dictTable tr th {
+            white-space: nowrap;
+            text-align: left;
+            font-weight: inherit;
+        }
+
+        table.dictTable td {
+            font-family: monospace;
+        }
+
+        table.dictTable {
+            border-collapse: collapse;
+        }
+        
+        #config table {
+            width: 80%;
+        }
+        
+        #config table th {
+            width: 10%;
+        }
+        
+        #config table td input {
+            width: 100%;
+        }
+    </style>
+
+</head> 
+
+<body>
+  <h1>APIM Javascript Tester</h1>
+    <div id="config"><table class="dictTable"></table></div>
+    <button disabled="disabled" id="getToken">Request an OAuth access token</button>
+    <button id="markValid" disabled="disabled">Try with this invalid token</button>
+    <button id="reset">Reset</button>
+    <button id="revoke">Revoke</button>
+    <button id="reload">Reload</button>
+  
+  <div id="token"><p>
+    <span class="msg">You do not currently have an access token.</span>
+  </p>
+  <div id="getting-started"></div>
+  </div>
+
+  
+  <div id="global"><p class="msg"></p></div>
+  <div id="api"><h2>API</h2><p class="msg">Waiting for Token to invoke API</p></div>
+  <div id="headers" style="display:none"><h2>Headers</h2><p class="msg">The following headers were recieved by the back end api</p><table class="dictTable"></table></div>
+  <div id="jwt" style="display:none"><h2>JWT</h2><p class="msg">The response had this JWT</p><table class="dictTable"></table></div>
+
+
+
+</body></html>
