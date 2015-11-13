@@ -75,3 +75,30 @@ Config.prototype._buildTable = function(table) {
         settings.input = input;
     }, this);
 }
+
+Config.prototype._buildForm = function(form) {
+    var template = $(form).find("div.template").remove();
+    template.removeClass("template");
+    
+    _.each(this._defaults, function (settings, id) {
+        var field = template.clone();
+        form.append(field);
+        
+        var input = field.find("input");
+        
+        input.attr("id", id);
+        field.find("label").attr("for", id).text(id);
+        
+        if (this[id]) input.val(this[id])
+    
+        var config = this;
+
+        input.change(function (e) {
+            console.log("Setting " + e.target.id + " to " + e.target.value);
+            if (settings.onChange) settings.onChange(e)
+            config[e.target.id] = e.target.value;
+            config._save();
+        });
+        settings.input = input;
+    }, this);
+}

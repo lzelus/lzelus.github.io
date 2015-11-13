@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html><head>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+
+  <title>APIM Javascript Tester</title>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
   <script src="vkbeautify.0.99.00.beta.js"></script>
@@ -8,6 +11,16 @@
   <script src="jquery.validate-1.14.0.js"></script>
   <script src="jquery.countdown.js"></script>
   <script src="config.js"></script>
+
+  <!-- Latest compiled and minified CSS -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" integrity="sha512-dTfge/zgoMYpP7QbHy4gWMEGsbsdZeCXz7irItjcC3sPUFtf0kuFbDz/ixG7ArTxmDjLXDmezHubeNikyKGVyQ==" crossorigin="anonymous">
+
+  <!-- Optional theme -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css" integrity="sha384-aUGj/X2zp5rLCbBxumKTCw2Z50WgIr1vs/PFN4praOTvYXWlVyh2UtNUU0KAUhAX" crossorigin="anonymous">
+
+  <!-- Latest compiled and minified JavaScript -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js" integrity="sha512-K1qjQ+NcF2TYO/eI3M6v8EiNYZfA95pQumfvcVrTHtwQVDG+aHRqLi/ETn2uB+1JqwYqVG3LIvdm9lj6imS/pQ==" crossorigin="anonymous"></script>
+
   <script>
 
     Cookies.defaults.secure = true;
@@ -19,7 +32,7 @@
         "clientID":"Get your Client Id from the API Store's My Subscriptions page",
         "callbackURL": window.location.href,
         "apiURL": {
-            'value': '/weather/1.0.0/weather?q=London,uk',
+            'value': '/echo/1.0.0/',
             'onChange' : function(event) {
                 if (event.target.value[0] != "/") {
                     event.target.value = "/" + event.target.value;
@@ -28,7 +41,7 @@
         },
         "htmlType":'GET',
         'ContentType':'application/json',
-        'payload':'',
+        'payload':'{"key":"value"}',
     });
 
 
@@ -123,41 +136,34 @@
             $("<pre>").text(text).appendTo(dest);
         }
         
-        // Check to see if a jwt assertion from the API Manager was echoed back by the service.
-        try {
-            json = jQuery.parseJSON( resp )
-            console.log("Response as JSON: ", json)
-            if ('x-jwt-assertion' in json) {
-                jwt = json['x-jwt-assertion']
-                if (Array.isArray(jwt)) {
-                    jwt = jwt[0]
-                }
-                renderJWT(jwt)
-            }
-        } catch (e) {
-            
-        }
+        renderJWT(jqXHR.getResponseHeader("X-JWT-Assertion"))
     }
     
     function beautify(data) {
         try {
-            if (config.ContentType.indexOf("json") != -1) {
-                return vkbeautify.json(data);
-            }
-            if (config.ContentType.indexOf("xml") != -1) {
-                return vkbeautify.xml(data);
-            }
+            return vkbeautify.json(data);
+        } catch (e) {
+            console.log("Could not render as json, attempting xml:", e)
+        }
+        
+        try {
+            return vkbeautify.xml(data);
         } catch (e) {
             console.log("Error while applying vkbeautify to response:", e)
         }
         return data;
+    }
+    
+    function revoke(token) {
+        alert("Revoke isn't implemented on this tester, because to revoke a token requires the client secret which we can't store in javascript.  UCSD is working with WSO2 on resolving this issue in the future.");
     }
 
     $(document).ready(function(){
         var token = getTokenData();
         console.log("Loaded token:", token);
         
-        config._buildTable($("#config table"));
+        // config._buildTable($("#config table"));
+        config._buildForm($("#config"));
         console.log("Loaded Config", config);
         
         
@@ -166,6 +172,8 @@
             console.log("Access token detected on URL.  Saving token.");
             
             token.set(getAnchorParams()["access_token"], getAnchorParams()["expires_in"] * 1000);
+            console.log("URL:", window.location);
+            console.log("Token expires_in:", getAnchorParams()["expires_in"]);
             console.log("Token issued:", token.issued);
             console.log("Token expires:", token.expires);
             
@@ -178,6 +186,7 @@
             window.location.href = config.serverURL + "/authorize?response_type=token&client_id="+config.clientID+"&redirect_uri="+config.callbackURL;
         }).on("token:change", function(event, token) {
             $(this).prop("disabled", !!token.valid);  // Enabled when token is invalid
+            $(this).toggleClass("btn-primary", !token.valid);
         });
         
         $("#reset").click(function(){           // Reset clears out the existing token and reloads the page.
@@ -230,20 +239,15 @@
                 $("#api .msg").html("Invoking API...");
                 jQuery.support.cors = true;
             
-                if (config.apiURL[0] != "/") {
-                    config.set("apiURL", "/" + config.apiURL)
-                }
-            
                 $.ajax({
                     url: config.serverURL + config.apiURL,
                     type: config.htmlType,
                     contentType: config.ContentType,
                     data: config.payload,
-                    headers: { Authorization: "Bearer " + token.value,},
+                    headers: {Authorization: "Bearer " + token.value},
                     success: function (resp, textStatus, jqXHR) {
                         renderSuccess("Successfully invoked the API.", "#api", resp, textStatus, jqXHR);
                         console.log("Returned headers " + jqXHR.getAllResponseHeaders());
-                        console.log("ACT Auth " + jqXHR.getResponseHeader("Act-authorization-token"));
                     },
                     error: function (jqXHR,  textStatus,  errorThrown) {
                         renderError("Failed to invoke the API.", "#api", jqXHR,  textStatus,  errorThrown);
@@ -256,9 +260,13 @@
     });
     
     function renderJWT(jwt) {
+        if (!jwt) {return;}
+        
+        console.log("JWT", jwt);
+        
         $("#jwt").show();
-        // JWT comes in the format "<metadata>=.<data>.", both metadata and data are base64 encoded json
-        var encoded = /=\.(.*)\./.exec(jwt)[1];
+        // JWT comes in the format "<metadata>=.<data>.<signature>", each part is base64 encoded json.  We're only intrested in the <data> section.
+        var encoded = /(.*)=\.(.*)\.(.*)/.exec(jwt)[2];
         var decoded = window.atob(encoded);
         $.each(JSON.parse(decoded), function( key, value ) {
             $("#jwt table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>");
@@ -267,72 +275,43 @@
     
   </script>
 
-    <style>
-        body {
-        }
-
-        table.dictTable th, table.dictTable td {
-            border: solid 1px;  
-            padding-left: 5px;
-            padding-right: 10px;
-        }
-
-        table.dictTable tr th {
-            white-space: nowrap;
-            text-align: left;
-            font-weight: inherit;
-        }
-
-        table.dictTable td {
-            font-family: monospace;
-        }
-
-        table.dictTable {
-            border-collapse: collapse;
-        }
-        
-        #config table {
-            width: 80%;
-        }
-        
-        #config table th {
-            width: 10%;
-        }
-        
-        #config table td input {
-            width: 100%;
-        }
-    </style>
-
 </head> 
 
 <body>
-  <h1>APIM Javascript Tester</h1>
-    <div id="config"><table class="dictTable"></table></div>
+    <div class="container">
+        <h1>APIM Javascript Tester</h1>
+        <div id="config" class="form-horizontal">
+            <div class="template form-group">
+                <label for="exampleField" class="col-sm-1 control-label">exampleField</label>
+                <div class="col-sm-10">
+                    <input type="text" class="form-control" id="exampleField">
+                </div>
+            </div>
+        </div>
 
-    <div id="token">
-        <p>OAuth Token: <input id="tokeninput"/></p>
-        <div id="countdown"></div>
-    </div>
+        <div id="token">
+            <div class="form-group">
+                <label for="tokeninput" class="col-sm-2 control-label">OAuth Token</label>
+                <input id="tokeninput" class="form-control" type="text" placeholder="No OAuth Token"/>
+            </div>
+            <div id="countdown"></div>
+        </div>
 
-    <button disabled="disabled" id="getToken">Request an OAuth access token</button>
-    <button id="markValid" disabled="disabled">Try with this invalid token</button>
-    <button id="reset">Reset</button>
-    <button id="revoke">Revoke</button>
-    <button id="reload">Reload</button>
-  
-    <div id="global"><p class="msg"></p></div>
-    <div id="api">
-        <h2>API</h2>
-        <p class="msg">Waiting for Token to invoke API</p>
-    </div>
-    <div id="headers" style="display:none">
-        <h2>Headers</h2><p class="msg">The following headers were recieved by the back end api</p>
-        <table class="dictTable"></table>
-    </div>
-    <div id="jwt" style="display:none">
-        <h2>JWT</h2>
-        <p class="msg">The response had this JWT</p>
-        <table class="dictTable"></table>
+        <button class="btn" id="getToken" disabled="disabled" >Request an OAuth access token</button>
+        <button class="btn" id="markValid" disabled="disabled">Try with this invalid token</button>
+        <button class="btn" id="reset">Reset Token</button>
+        <button class="btn" id="revoke">Revoke Token</button>
+        <button class="btn" id="reload">Invoke API Again</button>
+
+        <div id="global"><p class="msg"></p></div>
+        <div id="api">
+            <h2>API</h2>
+            <p class="msg">Waiting for Token to invoke API</p>
+        </div>
+        <div id="jwt" style="display:none">
+            <h2>JWT</h2>
+            <p class="msg">The response had this JWT</p>
+            <table class="table table-striped table-bordered table-hover table-condensed"></table>
+        </div>
     </div>
 </body></html>
