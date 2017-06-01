@@ -30,6 +30,7 @@
     config = new Config({
         "serverURL":"https://api-qa.ucsd.edu:8243", 
         "clientID":"Get your Client Id from the API Store's My Subscriptions page",
+        "scope":"default",
         "callbackURL": window.location.href,
         "apiURL": {
             'value': '/echo/1.0.0/',
@@ -183,7 +184,15 @@
         // Wire up the buttons
         $("#getToken").click(function(){        // Get Token redirects to APIM for user to authenticate.
             token.clear();
-            window.location.href = config.serverURL + "/authorize?response_type=token&client_id="+config.clientID+"&redirect_uri="+config.callbackURL;
+            qparams = { 
+                response_type:"token", 
+                client_id:config.clientID, 
+                redirect_uri:config.callbackURL
+            };
+            if (config.scope) {
+                qparams.scope = config.scope;
+            }
+            window.location.href = config.serverURL + "/authorize?" + $.param(qparams);
         }).on("token:change", function(event, token) {
             $(this).prop("disabled", !!token.valid);  // Enabled when token is invalid
             $(this).toggleClass("btn-primary", !token.valid);
@@ -265,8 +274,8 @@
         console.log("JWT", jwt);
         
         $("#jwt").show();
-        // JWT comes in the format "<metadata>=.<data>.<signature>", each part is base64 encoded json.  We're only intrested in the <data> section.
-        var encoded = /(.*)=\.(.*)\.(.*)/.exec(jwt)[2];
+        // JWT comes in the format "<metadata>.<data>.<signature>", each part is base64 encoded json.  We're only intrested in the <data> section.
+        var encoded = /(.*)\.(.*)\.(.*)/.exec(jwt)[2];
         var decoded = window.atob(encoded);
         $.each(JSON.parse(decoded), function( key, value ) {
             $("#jwt table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>");
