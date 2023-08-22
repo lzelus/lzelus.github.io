@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+<!-- NOTE: For testing locally you can run
+    python3 -m http.server
+    and then access the page via http://127.0.0.1:8000/APIMJavascriptTester.html -->
 <html><head>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
 
@@ -12,50 +15,42 @@
   <script src="jquery.countdown.js"></script>
   <script src="config.js"></script>
 
-  <!-- Latest compiled and minified CSS -->
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" integrity="sha512-dTfge/zgoMYpP7QbHy4gWMEGsbsdZeCXz7irItjcC3sPUFtf0kuFbDz/ixG7ArTxmDjLXDmezHubeNikyKGVyQ==" crossorigin="anonymous">
+  <!-- Standford Crypto Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sjcl/1.0.8/sjcl.min.js" integrity="sha512-s0r9TyYSs5CusSDL5s/QEZQZ4DNYLDXx0S+imS+SHR9mw0Yd0Z5KNS9dw7levSp7GpjOZu/bndds3FEDrKd8dg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- Optional theme -->
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css" integrity="sha384-aUGj/X2zp5rLCbBxumKTCw2Z50WgIr1vs/PFN4praOTvYXWlVyh2UtNUU0KAUhAX" crossorigin="anonymous">
-
-  <!-- Latest compiled and minified JavaScript -->
-  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js" integrity="sha512-K1qjQ+NcF2TYO/eI3M6v8EiNYZfA95pQumfvcVrTHtwQVDG+aHRqLi/ETn2uB+1JqwYqVG3LIvdm9lj6imS/pQ==" crossorigin="anonymous"></script>
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-HwwvtgBNo3bZJJLYd8oVXjrBZt8cqVSpeBNS5n7C8IVInixGAoxmnlMuBnhbgrkm" crossorigin="anonymous"></script>
 
   <script>
 
     Cookies.defaults.secure = true;
     Cookies.json = true;
-    
+
     // Load configuration settings
     config = new Config({
-        "serverURL":"https://api-qa.ucsd.edu:8243", 
-        "clientID":"Get your Client Id from the API Store's My Subscriptions page",
+        "OAuthEndpoint":"https://api-dev.ucsd.edu:8243/oauth2",
+        "clientID":"Get your Client Id from the APIM's Application",
+        "clientSecret":"Only required for PKCE",
         "scope":"default",
         "callbackURL": window.location.href,
-        "apiURL": {
-            'value': '/echo/1.0.0/',
-            'onChange' : function(event) {
-                if (event.target.value[0] != "/") {
-                    event.target.value = "/" + event.target.value;
-                }
-            }
-        },
+        "pkce":"true",
+        "apiEndpoint":"https://api-qa.ucsd.edu:8243/echo/1.0.0/",
         "htmlType":'GET',
         'ContentType':'application/json',
-        'payload':'{"key":"value"}',
+        'payload':'{"example_key":"example_value"}',
     });
-
 
     function getQueryParams()
     {
         return parseParams(/\?[^#]*/)
     }
-    
+
     function getAnchorParams()
     {
         return parseParams(/#[^\?]*/)
     }
-    
+
     function parseParams(regex)
     {
         var params = regex.exec(window.location.href);
@@ -72,7 +67,8 @@
         }
         return vars;
     }
-    
+
+    // A wrapper around the OAuth token being stored as a cookie
     function getTokenData() {
         var tokenData = Cookies.get("token") || {valid:false};
 
@@ -82,21 +78,24 @@
                 this.valid = false;
             }
             Cookies.set("token", this);
+
+            // Let everyone know that the token has changed.
             $("div,button").trigger("token:change", [this]);
         }
-        
+
         tokenData.invalidate = function() {
             this.valid = false;
             this.save()
         }
-        
+
         tokenData.clear = function() {
             this.value = "";
             this.valid = false;
             this.save();
         }
-        
+
         tokenData.set = function (value, expires) {
+            console.log("Setting access token to", value);
             this.value = value;
             this.valid = true;
             this.issued = new Date();
@@ -106,13 +105,13 @@
             this.expires = new Date(this.issued.getTime() + expires);
             this.save();
         }
-        
+
         return tokenData;
     }
-    
+
     function renderError(msg, dest, jqXHR,  textStatus,  errorThrown) {
         console.log("Failure", msg, textStatus, jqXHR.responseText, jqXHR );
-        
+
         if (jqXHR.responseText && ((jqXHR.responseText.indexOf("Access Token Inactive") != -1) || (jqXHR.responseText.indexOf("Access Token Expired") != -1))) {
             msg = "Access token has expired, marking it as invalid.";
             getTokenData().invalidate();
@@ -123,7 +122,7 @@
             $("<pre>").text(beautify(jqXHR.responseText)).appendTo(dest);
         }
     }
-    
+
     function renderSuccess(msg, dest, resp, textStatus, jqXHR, skipOutput) {
         console.log("Success.", msg, resp);
         console.log("    textStatus: " + textStatus);
@@ -136,17 +135,31 @@
             }
             $("<pre>").text(text).appendTo(dest);
         }
-        
+
         renderJWT(jqXHR.getResponseHeader("X-JWT-Assertion"))
     }
-    
+
+    function showError(msg, details) {
+        $("#error").show();
+        $("#error").empty();
+        $("#error").append($("<h2>").html(msg));
+
+        if (details) {
+            $("#error").append("<dl>");
+            for (const [key, value] of Object.entries(details)) {
+                $("#error dl").append($("<dt>").html(key));
+                $("#error dl").append($("<dd>").html(value));
+            }
+        }
+    }
+
     function beautify(data) {
         try {
             return vkbeautify.json(data);
         } catch (e) {
             console.log("Could not render as json, attempting xml:", e)
         }
-        
+
         try {
             return vkbeautify.xml(data);
         } catch (e) {
@@ -154,57 +167,144 @@
         }
         return data;
     }
-    
-    function revoke(token) {
-        alert("Revoke isn't implemented on this tester, because to revoke a token requires the client secret which we can't store in javascript.  UCSD is working with WSO2 on resolving this issue in the future.");
+
+    // The user wants an OAuth token, send them off to authorize
+    function getOAuthToken() {
+
+        getTokenData().clear();
+
+        qparams = {
+            response_type:"token",
+            client_id:config.clientID,
+            redirect_uri:config.callbackURL
+        };
+        if (config.scope) {
+            qparams.scope = config.scope;
+        }
+
+
+        if (config.pkce == "true") {
+            // Create a code that only we will know
+            var codeVerifier = getRandomBase64URLString(100);
+            Cookies.set("codeVerifier", codeVerifier);
+
+            // Hash the codeVerifier to send with the origional request
+            var codeChallenge = makeCodeChallenge(codeVerifier);
+
+            // We will send the codeChallenge with the authorization request, later we will send the codeVerifier when requestig the token
+            // the server will hash the codeVerifier and check that it matches the codeChallenge sent with the authorization.
+            // This will prove that our token request came from the same origin as the authorization request.
+
+            qparams.response_type = "code";
+            qparams.code_challenge = codeChallenge;
+            qparams.code_challenge_method = "S256";
+        }
+
+        window.location.href = config.OAuthEndpoint + "/authorize?" + $.param(qparams);
+    }
+
+
+    // A Implicit Style OAuth token was found on the url, store it in the cookie.
+    function processAccessToken() {
+        var token = getTokenData();
+        console.log("Access Token", getAnchorParams()["access_token"]);
+        token.set(getAnchorParams()["access_token"], getAnchorParams()["expires_in"] * 1000);
+        console.log("URL:", window.location);
+        console.log("Token expires_in:", getAnchorParams()["expires_in"]);
+        console.log("Token issued:", token.issued);
+        console.log("Token expires:", token.expires);
+
+        window.location.replace(config.callbackURL);
+    }
+
+    // A PKCE stype Authorization Code was found on the URL, make a request to get the actual token
+    function processAuthorizationCode() {
+        jQuery.support.cors = true;
+        var token = getTokenData();
+
+        $.ajax({
+            url: config.OAuthEndpoint + "/token",
+            type: "POST",
+            data: {
+                grant_type: "authorization_code",
+                redirect_uri: config.callbackURL,
+                code: getQueryParams()["code"],
+                code_verifier: Cookies.get("codeVerifier"),
+            },
+            username: config.clientID, // Client ID
+            password: config.clientSecret, // Client Secret
+            crossDomain: true,
+            success: function (resp, textStatus, jqXHR) {
+                console.log("Successfully retrieved an access token");
+                console.log(resp);
+                // console.log("Token expires_in:", resp["expires_in"]);
+
+                token.set(resp["access_token"], resp["expires_in"] * 1000);
+
+                console.log("Token issued:", token.issued);
+                console.log("Token expires:", token.expires);
+
+                window.location.replace(config.callbackURL);
+            },
+            error: function (jqXHR,  textStatus,  errorThrown) {
+                renderError("Failed to get a token.", "#api", jqXHR,  textStatus,  errorThrown);
+            },
+        }, 'json');
     }
 
     $(document).ready(function(){
         var token = getTokenData();
         console.log("Loaded token:", token);
-        
-        // config._buildTable($("#config table"));
-        config._buildForm($("#config"));
+
         console.log("Loaded Config", config);
-        
-        
-        // Check for and process the Access Token
+
+        console.log("Building the Form")
+        config._buildForm($("#config"));
+
+        // Check for and process the Access Token (implicit OAuth style)
         if (getAnchorParams()["access_token"]) {
             console.log("Access token detected on URL.  Saving token.");
-            
-            token.set(getAnchorParams()["access_token"], getAnchorParams()["expires_in"] * 1000);
-            console.log("URL:", window.location);
-            console.log("Token expires_in:", getAnchorParams()["expires_in"]);
-            console.log("Token issued:", token.issued);
-            console.log("Token expires:", token.expires);
-            
-            window.location.replace(config.callbackURL);
+            processAccessToken();
         }
-        
+
+        // Check for and process the Access Code - this is the PKCE flow
+        if (getQueryParams()["code"]) {
+            console.log("Access Code detected on URL.  Fetching token.");
+            processAuthorizationCode();
+        }
+
+        // Check for Authorization Errors
+        if (getQueryParams()["error"]) {
+            showError("Authorization Failed", {
+                "error":getQueryParams()["error"],
+                "error_description":getQueryParams()["error_description"],
+            });
+        }
+        if (getAnchorParams()["error"]) {
+            showError("Authorization Failed", {
+                "error":getAnchorParams()["error"],
+                "error_description":getAnchorParams()["error_description"],
+            });
+        }
+
+
         // Wire up the buttons
-        $("#getToken").click(function(){        // Get Token redirects to APIM for user to authenticate.
-            token.clear();
-            qparams = { 
-                response_type:"token", 
-                client_id:config.clientID, 
-                redirect_uri:config.callbackURL
-            };
-            if (config.scope) {
-                qparams.scope = config.scope;
-            }
-            window.location.href = config.serverURL + "/authorize?" + $.param(qparams);
-        }).on("token:change", function(event, token) {
-            $(this).prop("disabled", !!token.valid);  // Enabled when token is invalid
-            $(this).toggleClass("btn-primary", !token.valid);
-        });
-        
+        $("#getToken")
+            .click(getOAuthToken)
+            .on("token:change", function(event, token) {
+                $(this).prop("disabled", !!token.valid);  // Enabled when token is invalid
+
+                $(this).toggleClass("btn-primary", !token.valid);
+                $(this).toggleClass("btn-secondary", token.valid);
+            });
+
         $("#reset").click(function(){           // Reset clears out the existing token and reloads the page.
             token.clear();
             window.location.href = config.callbackURL;
         }).on("token:change", function(event, token) {
             $(this).prop("disabled", !token.value);  // Enabled when token is set
         });
-        
+
         $("#markValid").click(function() {
             token.valid = true;
             token.save();
@@ -213,32 +313,31 @@
             $(this).prop("disabled", !token.value || token.valid);  // Enabled when token is set but invalid.
         });
 
-        $("#revoke").click(function() {
-            revoke(token.value);
-        }).on("token:change", function(event, token) {
-            $(this).prop("disabled", !token.valid); // Enabled when token is valid.
-        });
-        
         $("#reload").click(function() {
             window.location.reload();
         });
-        
-        // Wire up the Access Token input
+
         $("#tokeninput").change(function(event) {
             console.log("Token was manually set to", this.value);
             token.set(this.value);
-        }).on("token:change", function(event, token) {
+        });
+
+        $("#tokeninput").on("token:change", function(event, token) {
+            console.log("The token was updated, setting the UI token input to ", token.value);
             this.value = token.value;
         });
-        
+
+        // When the token is updated, try to use it
         $("#token").on("token:change", function(event, token) {
+            console.log("on(token:change");
+            console.log(this);
             if (token.value) {
                 $("#token .msg").text("You currently have an OAuth token: " + token.value);
-            
+
                 if (!token.valid) {
                     $("#token .msg").append(".  It has been marked as invalid, a new token is required.");
                 }
-            
+
                 $('#countdown').countdown(new Date(token.expires),  function(event) {
                   $(this).html(event.strftime('Expires in %H:%M:%S'));
                 });
@@ -247,9 +346,9 @@
             if (token.valid) {
                 $("#api .msg").html("Invoking API...");
                 jQuery.support.cors = true;
-            
+
                 $.ajax({
-                    url: config.serverURL + config.apiURL,
+                    url: config.apiEndpoint,
                     type: config.htmlType,
                     contentType: config.ContentType,
                     data: config.payload,
@@ -264,15 +363,16 @@
                 }, 'json');
             }
         });
-        
+
+        // Cause the current token status to be be updated.
         $("input,button").trigger("token:change", [token]);
     });
-    
+
     function renderJWT(jwt) {
         if (!jwt) {return;}
-        
+
         console.log("JWT", jwt);
-        
+
         $("#jwt").show();
         // JWT comes in the format "<metadata>.<data>.<signature>", each part is base64 encoded json.  We're only intrested in the <data> section.
         var encoded = /(.*)\.(.*)\.(.*)/.exec(jwt)[2];
@@ -281,17 +381,63 @@
             $("#jwt table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>");
         });
     }
-    
+
+    function base64URLEncode(bytes) {
+      var str = String.fromCharCode(...bytes);
+
+      return window.btoa(str)
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
+    }
+
+
+    function getRandomBase64URLString(maxLength) {
+
+      // Base64 has a 4/3 expansion factor, so we drop the maxlen to conpensate
+      maxLength = Math.floor(maxLength / 4) * 3;
+
+      // Make 8 bit random values.  8bit because thats the max that bota will process
+      var randomBytes = new Uint8Array(maxLength);
+
+      window.crypto.getRandomValues(randomBytes);
+
+      // TODO: This is a temp till we can save the verifier
+    //   return "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+
+      // Convert the bytes to the limited character set allowed:  [A-Z]  [a-z]  [0-9]  "-"  "."  "_"  "~"
+      return base64URLEncode(randomBytes);
+    }
+
+    // To make a code challenge, sha256 and then base64URLEncode
+    // see: https://www.authlete.com/developers/pkce/
+    //
+    // testcase:
+    //   code_verifier:  dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+    //   code_challenge: E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+    function makeCodeChallenge(codeVerifier) {
+      // var codeVerifierBytes = new TextEncoder().encode(codeVerifier);
+      //
+      // var codeChallengeArray = await window.crypto.subtle.digest('SHA-256', codeVerifierBytes);
+      //
+      // var codeChallengeBytes = new Uint8Array(codeChallengeArray);
+      //
+      // return base64URLEncode(codeChallengeBytes);
+
+      var codeChallengeArray = sjcl.hash.sha256.hash(codeVerifier);
+      return sjcl.codec.base64url.fromBits(codeChallengeArray)
+    }
+
   </script>
 
-</head> 
+</head>
 
 <body>
     <div class="container">
         <h1>APIM Javascript Tester</h1>
         <div id="config" class="form-horizontal">
-            <div class="template form-group">
-                <label for="exampleField" class="col-sm-1 control-label">exampleField</label>
+            <div class="row_template form-group row mb-3">
+                <label for="exampleField" class="col-sm-2 control-label">exampleField</label>
                 <div class="col-sm-10">
                     <input type="text" class="form-control" id="exampleField">
                 </div>
@@ -306,13 +452,15 @@
             <div id="countdown"></div>
         </div>
 
-        <button class="btn" id="getToken" disabled="disabled" >Request an OAuth access token</button>
-        <button class="btn" id="markValid" disabled="disabled">Try with this invalid token</button>
-        <button class="btn" id="reset">Reset Token</button>
-        <button class="btn" id="revoke">Revoke Token</button>
-        <button class="btn" id="reload">Invoke API Again</button>
+        <button type="button" class="btn btn-primary" id="getToken" disabled="disabled" >Request an OAuth access token</button>
+        <button type="button" class="btn btn-secondary" id="markValid" disabled>Try with this invalid token</button>
+        <button type="button" class="btn btn-secondary" id="reset">Reset Token</button>
+        <button type="button" class="btn btn-secondary" id="reload">Invoke API Again</button>
 
         <div id="global"><p class="msg"></p></div>
+
+        <div id="error" style="display:none" class="p-3 text-primary-emphasis bg-danger-subtle border border-danger-subtle rounded-3"></div>
+
         <div id="api">
             <h2>API</h2>
             <p class="msg">Waiting for Token to invoke API</p>
@@ -323,4 +471,5 @@
             <table class="table table-striped table-bordered table-hover table-condensed"></table>
         </div>
     </div>
+
 </body></html>
