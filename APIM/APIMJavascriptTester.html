@@ -15,7 +15,6 @@
   <script src="js-cookie-2.0.3.js"></script>
   <script src="jquery.countdown.js"></script>
 
-
   <!-- Standford Crypto Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sjcl/1.0.8/sjcl.min.js" integrity="sha512-s0r9TyYSs5CusSDL5s/QEZQZ4DNYLDXx0S+imS+SHR9mw0Yd0Z5KNS9dw7levSp7GpjOZu/bndds3FEDrKd8dg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
@@ -238,7 +237,6 @@
             success: function (resp, textStatus, jqXHR) {
                 console.log("Successfully retrieved an access token");
                 console.log(resp);
-                // console.log("Token expires_in:", resp["expires_in"]);
 
                 token.set(resp["access_token"], resp["expires_in"] * 1000);
 
