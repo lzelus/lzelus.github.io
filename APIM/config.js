@@ -1,8 +1,4 @@
 var Config = function(defaults) {
-    if (!localStorage) {
-        console.log("Warning: LocalStorage is not supported, config will not auto save");
-    }
-
     this._defaults = defaults;
 
     // Normalize all defaults to {value: ...} form
@@ -20,7 +16,7 @@ var Config = function(defaults) {
 // --- Profile helpers ---
 
 Config.prototype._activeProfile = function() {
-    return localStorage ? (localStorage.getItem("activeProfile") || "default") : "default";
+    return localStorage.getItem("activeProfile") || "default";
 }
 
 Config.prototype._storageKey = function() {
@@ -28,25 +24,22 @@ Config.prototype._storageKey = function() {
 }
 
 Config.prototype.getProfiles = function() {
-    if (!localStorage) { return ["default"]; }
     return JSON.parse(localStorage.getItem("profileList") || '["default"]');
 }
 
 Config.prototype._saveProfileList = function(profiles) {
-    if (localStorage) { localStorage.setItem("profileList", JSON.stringify(profiles)); }
+    localStorage.setItem("profileList", JSON.stringify(profiles));
 }
 
 // --- Core load/save ---
 
 Config.prototype._load = function() {
-    if (!localStorage) { return; }
     var saved = JSON.parse(localStorage.getItem(this._storageKey()) || "{}");
     // Only restore keys that exist in defaults
     _.extend(this, _.pick(saved, _.keys(this._defaults)));
 }
 
 Config.prototype._save = function() {
-    if (!localStorage) { return; }
     var data = _.pick(this, _.keys(this._defaults));
     localStorage.setItem(this._storageKey(), JSON.stringify(data));
 }
@@ -86,7 +79,7 @@ Config.prototype.createProfile = function(name) {
 Config.prototype.deleteProfile = function(name) {
     var profiles = _.without(this.getProfiles(), name);
     this._saveProfileList(profiles);
-    if (localStorage) { localStorage.removeItem("config_" + name); }
+    localStorage.removeItem("config_" + name);
 }
 
 // --- Form builder ---
