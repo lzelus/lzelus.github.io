@@ -1,13 +1,13 @@
 <html>
 <head>
     <meta http-equiv="content-type" content="text/html; charset=UTF-8">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" integrity="sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs" crossorigin="anonymous"></script>
     <script>
         // expired example credentials — replace with your own from the APIM Application
         var CLIENT_ID = '9XOe41lJ6DIkHT6hp1IhOYPX3Nga';
         var CLIENT_SECRET = '';  // required by UCSD's APIM for PKCE
 
-        var OAUTH_BASE  = 'https://api-qa.ucsd.edu:8243';
+        var OAUTH_BASE  = 'https://api-qa.ucsd.edu/oauth2';
         var API_URL     = 'https://api-qa.ucsd.edu:8243/weather/1.0.0/weather';
         var CALLBACK_URL = window.location.href.split('?')[0];  // strip query params so the redirect_uri stays stable
 
