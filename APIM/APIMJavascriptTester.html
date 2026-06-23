@@ -146,6 +146,7 @@
     }
 
     function beautify(data) {
+        if (!data || !String(data).trim()) { return data; }
         try {
             return JSON.stringify(JSON.parse(data), null, 2);
         } catch (e) {
