@@ -34,7 +34,7 @@
         "clientSecret":"Only required for PKCE",
         "scope":"default",
         "callbackURL": window.location.href,
-        "pkce":"true",
+        "pkce":{value:true, type:"checkbox"},
         "apiEndpoint":"https://api-qa.ucsd.edu:8243/echo/1.0.0/",
         "htmlType":'GET',
         'ContentType':'application/json',
@@ -183,7 +183,7 @@
         }
 
 
-        if (config.pkce == "true") {
+        if (config.pkce) {
             // Create a code that only we will know
             var codeVerifier = getRandomBase64URLString(100);
             Cookies.set("codeVerifier", codeVerifier);
@@ -219,21 +219,22 @@
 
     // A PKCE stype Authorization Code was found on the URL, make a request to get the actual token
     function processAuthorizationCode() {
+        
+        console.log("Exchanging Access Code and Code Verifier for access token");
+        
         jQuery.support.cors = true;
         var token = getTokenData();
-
-        $.ajax({
+        
+        $.post({
             url: config.OAuthEndpoint + "/token",
-            type: "POST",
             data: {
                 grant_type: "authorization_code",
                 redirect_uri: config.callbackURL,
                 code: getQueryParams()["code"],
                 code_verifier: Cookies.get("codeVerifier"),
+                client_id: config.clientID,
+                client_secret: config.clientSecret,
             },
-            username: config.clientID, // Client ID
-            password: config.clientSecret, // Client Secret
-            crossDomain: true,
             success: function (resp, textStatus, jqXHR) {
                 console.log("Successfully retrieved an access token");
                 console.log(resp);
@@ -246,6 +247,7 @@
                 window.location.replace(config.callbackURL);
             },
             error: function (jqXHR,  textStatus,  errorThrown) {
+                console.log("Error occured while getting token");
                 renderError("Failed to get a token.", "#api", jqXHR,  textStatus,  errorThrown);
             },
         }, 'json');
@@ -259,6 +261,45 @@
 
         console.log("Building the Form")
         config._buildForm($("#config"));
+
+        // --- Profile management ---
+
+        function refreshProfileSelect() {
+            var profiles = config.getProfiles();
+            var current = config._activeProfile();
+            var select = $("#profileSelect").empty();
+            _.each(profiles, function(name) {
+                select.append($("<option>", {value: name, text: name, selected: name === current}));
+            });
+        }
+
+        refreshProfileSelect();
+
+        $("#profileSelect").change(function() {
+            config.switchProfile($(this).val());
+            // Clear the token — it belongs to the old environment, not the new one
+            getTokenData().clear();
+        });
+
+        $("#newProfile").click(function() {
+            var name = prompt("New profile name (current settings will be copied in):");
+            if (!name || !name.trim()) { return; }
+            name = name.trim();
+            config.createProfile(name);
+            refreshProfileSelect();
+        });
+
+        $("#deleteProfile").click(function() {
+            var current = config._activeProfile();
+            if (current === "default") {
+                alert("Cannot delete the default profile.");
+                return;
+            }
+            if (!confirm("Delete profile '" + current + "'? This cannot be undone.")) { return; }
+            config.deleteProfile(current);
+            config.switchProfile("default");
+            refreshProfileSelect();
+        });
 
         // Check for and process the Access Token (implicit OAuth style)
         if (getAnchorParams()["access_token"]) {
@@ -321,14 +362,14 @@
             token.set(this.value);
         });
 
-        $("#tokeninput").on("token:change", function(event, token) {
-            console.log("The token was updated, setting the UI token input to ", token.value);
-            this.value = token.value;
-        });
+        // $("#tokeninput").on("token:change", function(event, token) {
+        //     console.log("The token was updated, setting the UI token input to ", token.value);
+        //     this.value = token.value;
+        // });
 
         // When the token is updated, try to use it
         $("#token").on("token:change", function(event, token) {
-            console.log("on(token:change");
+            console.log("on(token:change)");
             console.log(this);
             if (token.value) {
                 $("#token .msg").text("You currently have an OAuth token: " + token.value);
@@ -434,11 +475,23 @@
 <body>
     <div class="container">
         <h1>APIM Javascript Tester</h1>
+        <!-- Profile selector -->
+        <div class="row mb-3 align-items-center border-bottom pb-3">
+            <label class="col-sm-2 col-form-label fw-bold">Profile</label>
+            <div class="col-sm-4">
+                <select id="profileSelect" class="form-select"></select>
+            </div>
+            <div class="col-sm-6">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="newProfile">+ New Profile</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="deleteProfile">Delete Profile</button>
+            </div>
+        </div>
+
         <div id="config" class="form-horizontal">
             <div class="row_template form-group row mb-3">
                 <label for="exampleField" class="col-sm-2 control-label">exampleField</label>
                 <div class="col-sm-10">
-                    <input type="text" class="form-control" id="exampleField">
+                    <input type="text" id="exampleField">
                 </div>
             </div>
         </div>
