@@ -1,0 +1,96 @@
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script>
+        // expired example credentials — replace with your own from the APIM Application
+        var CLIENT_ID = '9XOe41lJ6DIkHT6hp1IhOYPX3Nga';
+        var CLIENT_SECRET = '';  // required by UCSD's APIM for PKCE
+
+        var OAUTH_BASE  = 'https://api-qa.ucsd.edu:8243';
+        var API_URL     = 'https://api-qa.ucsd.edu:8243/weather/1.0.0/weather';
+        var CALLBACK_URL = window.location.href.split('?')[0];  // strip query params so the redirect_uri stays stable
+
+        // --- PKCE helpers ---
+
+        function base64URLEncode(buffer) {
+            return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        async function generateCodeVerifier() {
+            var bytes = new Uint8Array(64);
+            window.crypto.getRandomValues(bytes);
+            return base64URLEncode(bytes);
+        }
+
+        async function generateCodeChallenge(verifier) {
+            var bytes = new TextEncoder().encode(verifier);
+            var hash  = await window.crypto.subtle.digest('SHA-256', bytes);
+            return base64URLEncode(hash);
+        }
+
+        // --- Main flow ---
+
+        $(document).ready(async function() {
+            var params = new URLSearchParams(window.location.search);
+
+            if (params.has('code')) {
+                // Step 2: exchange the authorization code for a token
+                $.post({
+                    url: OAUTH_BASE + '/token',
+                    data: {
+                        grant_type:    'authorization_code',
+                        code:          params.get('code'),
+                        redirect_uri:  CALLBACK_URL,
+                        client_id:     CLIENT_ID,
+                        client_secret: CLIENT_SECRET,
+                        code_verifier: sessionStorage.getItem('pkce_verifier'),
+                    },
+                    success: function(data) {
+                        sessionStorage.removeItem('pkce_verifier');
+                        $("#token p").text("Access Token: " + data.access_token);
+                        invokeAPI(data.access_token);
+                    },
+                    error: function(xhr) {
+                        $("#token p").text("Token exchange failed: " + xhr.responseText);
+                    }
+                }, 'json');
+            } else {
+                // Step 1: generate a verifier, store it, and redirect to the authorization endpoint
+                var verifier   = await generateCodeVerifier();
+                var challenge  = await generateCodeChallenge(verifier);
+                sessionStorage.setItem('pkce_verifier', verifier);
+
+                window.location.href = OAUTH_BASE + '/authorize?' + $.param({
+                    response_type:         'code',
+                    client_id:             CLIENT_ID,
+                    redirect_uri:          CALLBACK_URL,
+                    code_challenge:        challenge,
+                    code_challenge_method: 'S256',
+                });
+            }
+        });
+
+        function invokeAPI(token) {
+            $.ajax({
+                url:      API_URL,
+                dataType: 'json',
+                data:     {q: 'London,uk'},
+                headers:  {Authorization: 'Bearer ' + token},
+                success: function(data) {
+                    $("#api p").text(JSON.stringify(data));
+                },
+                error: function(xhr) {
+                    $("#api p").text("API call failed: " + xhr.responseText);
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>API Manager Example (PKCE)</h1>
+    <h2>Token</h2><div id="token"><p>Authenticating...</p></div>
+    <h2>API</h2><div id="api"><p>Waiting on token</p></div>
+</body>
+</html>

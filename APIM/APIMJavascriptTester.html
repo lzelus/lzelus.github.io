@@ -29,14 +29,14 @@
 
     // Load configuration settings
     config = new Config({
-        "OAuthEndpoint":"https://api-dev.ucsd.edu/oauth2",
+        "OAuthEndpoint":"https://api-qa.ucsd.edu/oauth2",
         "clientID":"Get your Client Id from the APIM's Application",
-        "clientSecret":"Only required for PKCE",
+        "clientSecret":"Required by UCSD's APIM for PKCE",
         "scope":"default",
         "callbackURL": window.location.href,
         "pkce":{value:true, type:"checkbox"},
         "apiEndpoint":"https://api-qa.ucsd.edu:8243/echo/1.0.0/",
-        "htmlType":'GET',
+        "method":'GET',
         'ContentType':'application/json',
         'payload':'{"example_key":"example_value"}',
     });
@@ -389,7 +389,7 @@
 
                 $.ajax({
                     url: config.apiEndpoint,
-                    type: config.htmlType,
+                    type: config.method,
                     contentType: config.ContentType,
                     data: config.payload,
                     headers: {Authorization: "Bearer " + token.value},
@@ -417,8 +417,10 @@
         // JWT comes in the format "<metadata>.<data>.<signature>", each part is base64 encoded json.  We're only intrested in the <data> section.
         var encoded = /(.*)\.(.*)\.(.*)/.exec(jwt)[2];
         var decoded = window.atob(encoded);
-        $.each(JSON.parse(decoded), function( key, value ) {
-            $("#jwt table").append("<tr><th>"+key+"</th><td>"+value+"</td></tr>");
+        $.each(JSON.parse(decoded), function(key, value) {
+            $("#jwt table").append(
+                $("<tr>").append($("<th>").text(key), $("<td>").text(value))
+            );
         });
     }
 
@@ -441,9 +443,6 @@
       var randomBytes = new Uint8Array(maxLength);
 
       window.crypto.getRandomValues(randomBytes);
-
-      // TODO: This is a temp till we can save the verifier
-    //   return "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 
       // Convert the bytes to the limited character set allowed:  [A-Z]  [a-z]  [0-9]  "-"  "."  "_"  "~"
       return base64URLEncode(randomBytes);
